@@ -97,6 +97,7 @@ void parseInstruction(char *instr, int i)
         opcodeLen++;
     }
     memset(opcode, 0, 4);
+    memset(regValue, 0, 2);
 
     strncpy(opcode, instr, opcodeLen);
 
@@ -161,9 +162,8 @@ void parseInstruction(char *instr, int i)
     if ((*opcodePtr) != ' ')
     {
         regValue[1] = (*opcodePtr);
+        opcodePtr++;
     }
-    opcodePtr++;
-
     opcodePtr++;
     getBinary(atoi(regValue), i);
 
@@ -172,7 +172,7 @@ void parseInstruction(char *instr, int i)
     if ((*opcodePtr) == 'R')
     {
         opcodePtr++;
-        while ((*opcodePtr) != ' ' && (*opcodePtr) != '\n')
+        while ((*opcodePtr) != ' ' && (*opcodePtr) != '\n' && (*opcodePtr) != '\0')
         {
             strncat(regValue, (opcodePtr), 1);
             opcodePtr++;
@@ -182,7 +182,7 @@ void parseInstruction(char *instr, int i)
     else
     {
 
-        while ((*opcodePtr) != ' ' && (*opcodePtr) != '\n')
+        while ((*opcodePtr) != ' ' && (*opcodePtr) != '\n' && (*opcodePtr) != '\0')
         {
             strncat(regValue, (opcodePtr), 1);
             opcodePtr++;
@@ -205,22 +205,161 @@ void instructionDecode()
     char opcode[5];
     char firstOperand[7];
     char secondOperand[7];
+    char temp[32];
 
     strncpy(opcode, currentInstr, 4);
     strncpy(firstOperand, &currentInstr[4], 6);
     strncpy(secondOperand, &currentInstr[10], 6);
+    
     opcode[4] = '\0';
     firstOperand[6] = '\0';
     secondOperand[6] = '\0';
+    temp[31] = '\0';
 
+    if (firstOperand[0] == '1')
+    {
+        strcpy(temp, "11111111111111111111111111");
+        strncat(temp, firstOperand, 6);
+        firstOP = (int)strtol(temp, NULL, 2);
+    }
+    else
+    {
+        strcpy(temp, "00000000000000000000000000");
+        strncat(temp, firstOperand, 6);
+        firstOP = (int)strtol(temp, NULL, 2);
+    }
+
+    if (secondOperand[0] == '1')
+    {
+        strcpy(temp, "11111111111111111111111111");
+        strcat(temp, secondOperand);
+        secondOP = (int)strtol(temp, NULL, 2);
+    }
+    else
+    {
+        strcpy(temp, "00000000000000000000000000");
+        strcat(temp, secondOperand);
+        secondOP = (int)strtol(temp, NULL, 2);
+    }
     opcodeVal = (int)strtol(opcode, NULL, 2);
-    firstOP = (int)strtol(firstOperand, NULL, 2);
-    secondOP = (int)strtol(secondOperand, NULL, 2);
 }
 
 void instructionExecute()
 {
+    switch (opcodeVal)
+    {
+    // ADD
+    case 0:
+        break;
+    // SUB
+    case 1:
+        // Code for opcode 1
+        break;
+    // MUL
+    case 2:
+        // Code for opcode 2
+        break;
+    // LDI
+    case 3:
+        REG[firstOP] = secondOP;
+        break;
+    // BEQZ
+    case 4:
+
+        if (REG[firstOP - 1] == 0)
+        {
+            PC += secondOP;
+        }
+
+        break;
+
+    // AND
+    case 5:
+        REG[firstOP-1] = REG[firstOP-1] & REG[secondOP-1];
+        
+        //Updating zero flag
+        updateZeroFlag();
+
+        //Updating negative flag
+        updateNegativeFlag();
+
+        break;
+    // OR
+    case 6:
+        REG[firstOP-1] = REG[firstOP-1] | REG[secondOP-1];
+
+        //Updating zero flag
+        updateZeroFlag();
+
+        //Updating negative flag
+        updateNegativeFlag();
+        
+        break;
+
+    //JR
+    case 7:
+        printf("first OP: %d\n", REG[firstOP]);
+        printf("first OP address: %d\n", firstOP);
+        printf("REG[1]: %d\n", REG[1]);
+
+        char concatenatedIndex[3];
+        sprintf(concatenatedIndex, "%d%d", REG[firstOP-1], REG[secondOP-1]);
+        printf("concatenated Index: %s\n", concatenatedIndex);
+        int index = atoi(concatenatedIndex);
+
+        // Update the Program Counter (PC)
+
+        PC = index;
+        break;
+
+    // SLC
+    case 8:
+        // Code for opcode 8
+        break;
+    // SRC
+    case 9:
+        // Code for opcode 9
+        break;
+    // LB
+    case 10:
+        // Code for opcode 10
+        break;
+    // SB
+    case 11:
+        // Code for opcode 11
+        break;
+
+    default:
+        break;
+    }
 }
+
+void updateZeroFlag()
+{
+    if (REG[firstOP-1] == 0)
+    {
+        SREG[0] = SREG[0] | 1;
+    }
+    else
+    {
+        SREG[0] = SREG[0] & (~1);
+    }
+}
+
+void updateNegativeFlag()
+{
+    if (REG[firstOP-1] < 0)
+    {
+        SREG[0] = SREG[0] | 4;
+    }
+    else
+    {
+        SREG[0] = SREG[0] & (~4);
+    }
+}
+
+
+
 int main(int argc, char const *argv[])
 {
     FILE *fptr;
@@ -240,10 +379,16 @@ int main(int argc, char const *argv[])
         printf("_\n");
         instructionFetch();
         instructionDecode();
+        REG[1] = 0b00000100;
+        REG[0] = 0b00000100;
+        instructionExecute();
+        printf("%d\n", PC);
         fclose(fptr);
     }
 
     return 0;
+
+
 
     // instruction  memory teb2a string w method takes (el int to rep el opcode w wa7da tanya te3ml  )
 }
