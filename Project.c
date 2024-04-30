@@ -23,6 +23,30 @@ int secondOP;
 int SREG[1];
 unsigned short PC;
 
+void updateZeroFlag()
+{
+    if (REG[firstOP - 1] == 0)
+    {
+        SREG[0] = SREG[0] | 1;
+    }
+    else
+    {
+        SREG[0] = SREG[0] & (~1);
+    }
+}
+
+void updateNegativeFlag()
+{
+    if (REG[firstOP - 1] < 0)
+    {
+        SREG[0] = SREG[0] | 4;
+    }
+    else
+    {
+        SREG[0] = SREG[0] & (~4);
+    }
+}
+
 void getBinary(int value, int i)
 {
     char binary[6];
@@ -83,6 +107,65 @@ void getBinary(int value, int i)
     }
     strcat(IM[i].instruction, binary);
 }
+
+void getBinaryMod(int value, char binary[7])
+{
+    int index = 5;
+    int numBits = 0;
+    int flag = 0;
+    int temp = value;
+
+    while (temp != 0)
+    {
+
+        if (temp % 2 == 0)
+        {
+            binary[index] = '0';
+            index = index - 1;
+        }
+        else
+        {
+            binary[index] = '1';
+            index = index - 1;
+        }
+        temp /= 2;
+    }
+    while (index > -1)
+    {
+        binary[index] = '0';
+        index = index - 1;
+    }
+
+    if (value < 0)
+    {
+
+        index = 5;
+
+        while (index > -1)
+        {
+            if (flag)
+            {
+                if (binary[index] == '0')
+                {
+                    binary[index] = '1';
+                }
+                else
+                {
+                    binary[index] = '0';
+                }
+            }
+            else
+            {
+                if (binary[index] == '1')
+                {
+                    flag = 1;
+                }
+            }
+            index = index - 1;
+        }
+    }
+}
+
 void parseInstruction(char *instr, int i)
 {
     char opcode[5];
@@ -116,7 +199,7 @@ void parseInstruction(char *instr, int i)
     {
         strcpy(IM[i].instruction, "0010");
     }
-    if (strcmp("LDI ", opcode) == 0)
+    if (strcmp("LDI", opcode) == 0)
     {
         strcpy(IM[i].instruction, "0011");
     }
@@ -210,7 +293,7 @@ void instructionDecode()
     strncpy(opcode, currentInstr, 4);
     strncpy(firstOperand, &currentInstr[4], 6);
     strncpy(secondOperand, &currentInstr[10], 6);
-    
+
     opcode[4] = '\0';
     firstOperand[6] = '\0';
     secondOperand[6] = '\0';
@@ -263,9 +346,9 @@ void instructionExecute()
     case 3:
         REG[firstOP] = secondOP;
         break;
-    // BEQZ
-    case 4:
+        // BEQZ
 
+    case 4:
         if (REG[firstOP - 1] == 0)
         {
             PC += secondOP;
@@ -275,86 +358,91 @@ void instructionExecute()
 
     // AND
     case 5:
-        REG[firstOP-1] = REG[firstOP-1] & REG[secondOP-1];
-        
-        //Updating zero flag
+        REG[firstOP - 1] = REG[firstOP - 1] & REG[secondOP - 1];
+
+        // Updating zero flag
         updateZeroFlag();
 
-        //Updating negative flag
+        // Updating negative flag
         updateNegativeFlag();
 
         break;
     // OR
     case 6:
-        REG[firstOP-1] = REG[firstOP-1] | REG[secondOP-1];
+        REG[firstOP - 1] = REG[firstOP - 1] | REG[secondOP - 1];
 
-        //Updating zero flag
+        // Updating zero flag
         updateZeroFlag();
 
-        //Updating negative flag
+        // Updating negative flag
         updateNegativeFlag();
-        
+
         break;
 
-    //JR
+    // JR
     case 7:
-        printf("first OP: %d\n", REG[firstOP]);
-        printf("first OP address: %d\n", firstOP);
-        printf("REG[1]: %d\n", REG[1]);
+        char temp[27];
 
-        char concatenatedIndex[3];
-        sprintf(concatenatedIndex, "%d%d", REG[firstOP-1], REG[secondOP-1]);
-        printf("concatenated Index: %s\n", concatenatedIndex);
-        int index = atoi(concatenatedIndex);
+        char tempBin[7];
+        getBinaryMod(REG[firstOP - 1], tempBin);
+        strcpy(temp, tempBin);
+        getBinaryMod(REG[secondOP - 1], tempBin);
+        strcat(temp, tempBin);
+        if (REG[firstOP - 1] >= 0)
+        {
+            PC = (int)strtol(temp, NULL, 2);
+        }
+        else
+        {
+            strcat(temp, "11111111111111111111");
+            PC = (int)strtol(temp, NULL, 2);
+        }
 
-        // Update the Program Counter (PC)
-
-        PC = index;
         break;
 
     // SLC
     case 8:
-        // Code for opcode 8
+        // Get the modulo 8 of the immediate value to determine shift amount
+        int shift = secondOP % 8;
+
+        // Perform the left circular shift
+        REG[firstOP] = (REG[firstOP] << shift) | (REG[firstOP] >> (8-shift));
+
+        // Updating zero flag
+        updateZeroFlag();
+
+        // Updating negative flag
+        updateNegativeFlag();
+
         break;
     // SRC
     case 9:
-        // Code for opcode 9
+        // Get the modulo 8 of the immediate value to determine shift amount
+        shift = secondOP % 8;
+
+        // Perform the right circular shift
+        REG[firstOP] = (REG[firstOP] >> shift) | (REG[firstOP] << (8-shift));
+        
+        // Updating zero flag
+        updateZeroFlag();
+
+        // Updating negative flag
+        updateNegativeFlag();
         break;
     // LB
     case 10:
-        // Code for opcode 10
+        REG[firstOP] = DM[secondOP];
+        printf("%d \n", REG[firstOP]);
         break;
     // SB
     case 11:
+        DM[secondOP] = REG[firstOP];
+        printf("%d \n", DM[secondOP]);
         // Code for opcode 11
         break;
 
-    default:
+    default:    
         break;
-    }
-}
-
-void updateZeroFlag()
-{
-    if (REG[firstOP-1] == 0)
-    {
-        SREG[0] = SREG[0] | 1;
-    }
-    else
-    {
-        SREG[0] = SREG[0] & (~1);
-    }
-}
-
-void updateNegativeFlag()
-{
-    if (REG[firstOP-1] < 0)
-    {
-        SREG[0] = SREG[0] | 4;
-    }
-    else
-    {
-        SREG[0] = SREG[0] & (~4);
     }
 }
 
@@ -379,16 +467,12 @@ int main(int argc, char const *argv[])
         printf("_\n");
         instructionFetch();
         instructionDecode();
-        REG[1] = 0b00000100;
-        REG[0] = 0b00000100;
+        REG[1] = 0b000100;
+        REG[0] = 0b000100;
         instructionExecute();
         printf("%d\n", PC);
         fclose(fptr);
     }
 
     return 0;
-
-
-
-    // instruction  memory teb2a string w method takes (el int to rep el opcode w wa7da tanya te3ml  )
 }
