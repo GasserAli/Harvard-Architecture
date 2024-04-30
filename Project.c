@@ -23,10 +23,7 @@ int secondOP;
 int SREG[1];
 unsigned short PC;
 
-void add()
-{
-    REG[firstOP - 1] += REG[secondOP - 1];
-}
+
 void sub()
 {
     REG[firstOP - 1] -= REG[secondOP - 1];
@@ -66,15 +63,16 @@ void updateCarryflag()
     //masking bit 8 OP1
     // int mask = 1 << 8;
     // int bit8 = REG[firstOP - 1] & mask;
-
-    if(REG[firstOP - 1] > 255)
-    {
-        SREG[0] = SREG[0] | 16;
-    }
-    else
-    {
-        SREG[0] = SREG[0] & (~16);
-    }
+    
+    
+    // if(REG[firstOP - 1] > 127)
+    // {
+    //     SREG[0] = SREG[0] | 16;
+    // }
+    // else
+    // {
+    //     SREG[0] = SREG[0] & (~16);
+    // }
 }
 
 void getBinary(int value, int i)
@@ -135,6 +133,7 @@ void getBinary(int value, int i)
             index = index - 1;
         }
     }
+   
     strcat(IM[i].instruction, binary);
 }
 
@@ -363,9 +362,16 @@ void instructionExecute()
     {
     // ADD
     case 0:
-        add();
+            int tempVal= REG[firstOP - 1] + REG[secondOP - 1];
+
+            if(tempVal>127 || tempVal<-128){
+                //update carry flag
+                //mask 9th bit and place first 8 in register
+            }
+
+
         //updating carry flag
-        updateCarryflag();
+
 
         // Updating zero flag
         updateZeroFlag();
@@ -521,8 +527,10 @@ int main(int argc, char const *argv[])
             parseInstruction(instruction, i);
             i++;
         }
-        REG[0] = 1;
-        REG[1] = -255;
+        
+
+        REG[0] = -127;
+        REG[1] = -3;
         printf("_\n");
         instructionFetch();
         instructionDecode();
