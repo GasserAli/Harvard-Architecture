@@ -61,6 +61,22 @@ void updateNegativeFlag()
     }
 }
 
+void updateCarryflag()
+{
+    //masking bit 8 OP1
+    // int mask = 1 << 8;
+    // int bit8 = REG[firstOP - 1] & mask;
+
+    if(REG[firstOP - 1] > 255)
+    {
+        SREG[0] = SREG[0] | 16;
+    }
+    else
+    {
+        SREG[0] = SREG[0] & (~16);
+    }
+}
+
 void getBinary(int value, int i)
 {
     char binary[6];
@@ -348,17 +364,36 @@ void instructionExecute()
     // ADD
     case 0:
         add();
+        //updating carry flag
+        updateCarryflag();
+
+        // Updating zero flag
         updateZeroFlag();
+
+        // Updating negative flag
+        updateNegativeFlag();
         break;
 
     // SUB
     case 1:
         sub();
+
+        // Updating zero flag
+        updateZeroFlag();
+
+        // Updating negative flag
+        updateNegativeFlag();
         break;
 
     // MUL
     case 2:
-        // Code for opcode 2
+        mul();
+
+        // Updating zero flag
+        updateZeroFlag();
+
+        // Updating negative flag
+        updateNegativeFlag();
         break;
 
     // LDI
@@ -378,6 +413,9 @@ void instructionExecute()
     // AND
     case 5:
         REG[firstOP - 1] = REG[firstOP - 1] & REG[secondOP - 1];
+
+
+
 
         // Updating zero flag
         updateZeroFlag();
@@ -483,13 +521,22 @@ int main(int argc, char const *argv[])
             parseInstruction(instruction, i);
             i++;
         }
+        REG[0] = 1;
+        REG[1] = -255;
         printf("_\n");
         instructionFetch();
         instructionDecode();
-        REG[1] = 0b000100;
-        REG[0] = 0b000100;
         instructionExecute();
-        printf("%d\n", PC);
+
+        int zeroMask = 1;
+        int negativeMask = 4;
+        int carryMask = 16;
+        printf("Result: %d\n", REG[firstOP - 1]);
+        printf("Zero flag: %d\n", SREG[0] & zeroMask);
+        printf("Negative flag: %d\n", (SREG[0] & negativeMask)>>2);
+        printf("Carry flag: %d\n", (SREG[0] & carryMask)>>4);
+
+        // printf("%d\n", PC);
         fclose(fptr);
     }
 
