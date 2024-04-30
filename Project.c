@@ -23,6 +23,20 @@ int secondOP;
 int SREG[1];
 unsigned short PC;
 
+void add()
+{
+    REG[firstOP - 1] += REG[secondOP - 1];
+}
+void sub()
+{
+    REG[firstOP - 1] -= REG[secondOP - 1];
+}
+
+void mul()
+{
+    REG[firstOP - 1] *= REG[secondOP - 1];
+}
+
 void updateZeroFlag()
 {
     if (REG[firstOP - 1] == 0)
@@ -333,21 +347,26 @@ void instructionExecute()
     {
     // ADD
     case 0:
+        add();
+        updateZeroFlag();
         break;
+
     // SUB
     case 1:
-        // Code for opcode 1
+        sub();
         break;
+
     // MUL
     case 2:
         // Code for opcode 2
         break;
+
     // LDI
     case 3:
-        REG[firstOP] = secondOP;
+        REG[firstOP-1] = secondOP;
         break;
+        
         // BEQZ
-
     case 4:
         if (REG[firstOP - 1] == 0)
         {
