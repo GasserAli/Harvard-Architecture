@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <stdint.h>
 
 int clock = 0;
 char currentInstr[17];
@@ -14,13 +15,13 @@ struct instr
 // TODO: el REG hatb2a int wala a3ml type yeb2a 1 byte
 struct instr IM[1024];
 int DM[2048];
-int REG[64];
+int8_t REG[64];
 int opcodeVal;
 
 int firstOP;
 int secondOP;
 
-int SREG[1];
+int8_t SREG;
 unsigned short PC;
 
 void sub()
@@ -33,44 +34,98 @@ void mul()
     REG[firstOP - 1] *= REG[secondOP - 1];
 }
 
-void updateZeroFlag()
+void updateOverflow(uint8_t op1, uint8_t op2, uint8_t val)
 {
-    if (REG[firstOP - 1] == 0)
+    uint8_t firstMSB = (op1 & 0b10000000) >> 7;
+    uint8_t secondMSB = (op1 & 0b10000000) >> 7;
+    uint8_t valMSB = (val & 0b10000000) >> 7;
+
+    if (firstMSB == secondMSB)
     {
-        SREG[0] = SREG[0] | 1;
+        if (firstMSB != val)
+        {
+            // mask other SREG bits
+            SREG = SREG & 0b11110111;
+
+            // update needed bit (2nd bit)
+            SREG = SREG | 0b00001000;
+        }
+    }
+    // no need to mask then set as we want it to be zero
+    SREG = SREG & 0b11110111;
+}
+
+void updateSignFlag()
+{
+    uint8_t nBit = (SREG & 0b00000100) >> 2;
+    uint8_t vBit = (SREG & 0b00000010) >> 1;
+
+    if (nBit ^ vBit)
+    {
+        // mask other SREG bits
+        SREG = SREG & 0b11111101;
+
+        // update needed bit (2nd bit)
+        SREG = SREG | 0b00000010;
     }
     else
     {
-        SREG[0] = SREG[0] & (~1);
+        // no need to mask then set as we want it to be zero
+        SREG = SREG & 0b11111101;
     }
 }
 
-void updateNegativeFlag()
+void updateZeroFlag(int val)
 {
-    if (REG[firstOP - 1] < 0)
+    // check if operation value=0
+    if (val == 0)
     {
-        SREG[0] = SREG[0] | 4;
+
+        // mask other SREG bits
+        SREG = SREG & 0b11111110;
+
+        // update needed bit (4th bit)
+        SREG = SREG | 0b00000001;
     }
     else
     {
-        SREG[0] = SREG[0] & (~4);
+        // no need to mask then set as we want it to be zero
+        SREG = SREG & 0b11111110;
     }
 }
 
-void updateCarryflag()
+void updateNegativeFlag(int val)
 {
-    // masking bit 8 OP1
-    //  int mask = 1 << 8;
-    //  int bit8 = REG[firstOP - 1] & mask;
+    int comp = val & 0b0000000000000000000000010000000;
+    uint8_t newVal = comp >> 5;
 
-    // if(REG[firstOP - 1] > 127)
-    // {
-    //     SREG[0] = SREG[0] | 16;
-    // }
-    // else
-    // {
-    //     SREG[0] = SREG[0] & (~16);
-    // }
+    // mask other SREG bits
+    SREG = SREG & 0b11111011;
+
+    // update needed bit (2nd bit)
+    SREG = SREG | newVal;
+
+    printf("SREG after neg:%d\n", SREG);
+}
+
+void updateCarryflag(int val)
+{
+    // gets unsigned value
+    if (val < 0)
+    {
+        val = val / -1;
+    }
+
+    int comp = val & 0b00000000000000000000000100000000;
+    uint8_t newVal = comp >> 4;
+
+    // mask other SREG bits
+    SREG = SREG & 0b11101111;
+
+    // update needed bit (4th bit)
+    SREG = SREG | newVal;
+
+    printf("SREG after carry:%d\n", SREG);
 }
 
 void getBinary(int value, int i)
@@ -361,20 +416,10 @@ void instructionExecute()
     // ADD
     case 0:
         int tempVal = REG[firstOP - 1] + REG[secondOP - 1];
-
-        if (tempVal > 127 || tempVal < -128)
-        {
-            // update carry flag
-            // mask 9th bit and place first 8 in register
-        }
-
-        // updating carry flag
-
+        updateCarryflag(tempVal);
+        updateNegativeFlag(tempVal);
         // Updating zero flag
-        updateZeroFlag();
-
-        // Updating negative flag
-        updateNegativeFlag();
+        updateZeroFlag(tempVal);
         break;
 
     // SUB
@@ -382,10 +427,8 @@ void instructionExecute()
         sub();
 
         // Updating zero flag
-        updateZeroFlag();
 
         // Updating negative flag
-        updateNegativeFlag();
         break;
 
     // MUL
@@ -393,10 +436,8 @@ void instructionExecute()
         mul();
 
         // Updating zero flag
-        updateZeroFlag();
 
         // Updating negative flag
-        updateNegativeFlag();
         break;
 
     // LDI
@@ -418,10 +459,8 @@ void instructionExecute()
         REG[firstOP - 1] = REG[firstOP - 1] & REG[secondOP - 1];
 
         // Updating zero flag
-        updateZeroFlag();
 
         // Updating negative flag
-        updateNegativeFlag();
 
         break;
     // OR
@@ -429,10 +468,8 @@ void instructionExecute()
         REG[firstOP - 1] = REG[firstOP - 1] | REG[secondOP - 1];
 
         // Updating zero flag
-        updateZeroFlag();
 
         // Updating negative flag
-        updateNegativeFlag();
 
         break;
 
@@ -466,10 +503,8 @@ void instructionExecute()
         REG[firstOP] = (REG[firstOP] << shift) | (REG[firstOP] >> (8 - shift));
 
         // Updating zero flag
-        updateZeroFlag();
 
         // Updating negative flag
-        updateNegativeFlag();
 
         break;
     // SRC
@@ -481,10 +516,8 @@ void instructionExecute()
         REG[firstOP] = (REG[firstOP] >> shift) | (REG[firstOP] << (8 - shift));
 
         // Updating zero flag
-        updateZeroFlag();
 
         // Updating negative flag
-        updateNegativeFlag();
         break;
     // LB
     case 10:
@@ -520,20 +553,17 @@ int main(int argc, char const *argv[])
             i++;
         }
 
-        REG[0] = -127;
-        REG[1] = -3;
-        printf("_\n");
+        REG[0] = -3;
+        REG[1] = 3;
+        printf("____________________________________________\n");
         instructionFetch();
         instructionDecode();
         instructionExecute();
+
         // ay 7aga
-        int zeroMask = 1;
-        int negativeMask = 4;
-        int carryMask = 16;
-        printf("Result: %d\n", REG[firstOP - 1]);
-        printf("Zero flag: %d\n", SREG[0] & zeroMask);
-        printf("Negative flag: %d\n", (SREG[0] & negativeMask) >> 2);
-        printf("Carry flag: %d\n", (SREG[0] & carryMask) >> 4);
+        // printf("Result: %d\n", REG[firstOP - 1]);
+        // printf("Zero flag: %d\n", SREG[0] & zeroMask);
+        printf("Negative flag: %d\n", SREG);
 
         // printf("%d\n", PC);
         fclose(fptr);
