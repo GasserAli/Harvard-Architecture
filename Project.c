@@ -2,37 +2,145 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdint.h>
+#define SIZE 10
 
-int clock = 0;
-char currentInstr[17];
+int skip = 0;
+int cyclesNeeded = 0;
+struct queueElement
+{
+    int firstOp;
+    int secondOp;
+    int opcode;
+};
 
 struct instr
 {
     char instruction[17];
 };
 
-// TODO:hayb2o of type ehh
-// TODO: el REG hatb2a int wala a3ml type yeb2a 1 byte
+char fetchQueueOutput[17];
+struct queueElement decodeQueueOutput;
+
+struct queueElement decodeQueue[SIZE];
+int frontDecode = -1;
+int rearDecode = -1;
+
+// Function to check if the decodeQueue is full
+int isFullDecode()
+{
+    return rearDecode == SIZE - 1;
+}
+
+// Function to check if the decodeQueue is empty
+int isEmptyDecode()
+{
+    return frontDecode == -1 || frontDecode > rearDecode;
+}
+
+// Function to add an element to the decodeQueue
+void enqueueDecode(struct queueElement element)
+{
+    if (isFullDecode())
+    {
+        printf("Queue is full!\n");
+    }
+    else
+    {
+        if (frontDecode == -1)
+        {
+            frontDecode = 0;
+        }
+        rearDecode++;
+        decodeQueue[rearDecode] = element;
+    }
+}
+
+// Function to remove an element from the decodeQueue
+void dequeueDecode()
+{
+    if (isEmptyDecode())
+    {
+        printf("Queue is empty!\n");
+    }
+    else
+    {
+        decodeQueueOutput = decodeQueue[frontDecode];
+        frontDecode++;
+        if (frontDecode > rearDecode)
+        {
+            frontDecode = rearDecode = -1;
+        }
+    }
+}
+
+struct instr fetchQueue[SIZE];
+int frontFetch = -1;
+int rearFetch = -1;
+
+// Function to check if the decodeQueue is full
+int isFullFetch()
+{
+    return rearFetch == SIZE - 1;
+}
+
+// Function to check if the decodeQueue is empty
+int isEmptyFetch()
+{
+    return frontFetch == -1 || frontFetch > rearFetch;
+}
+
+// Function to add an element to the decodeQueue
+void enqueueFetch(char instr[17])
+{
+    struct instr element;
+    strcpy(element.instruction, instr);
+    if (isFullFetch())
+    {
+        printf("Queue is full!\n");
+    }
+    else
+    {
+        if (frontFetch == -1)
+        {
+            frontFetch = 0;
+        }
+        rearFetch++;
+        fetchQueue[rearFetch] = element;
+    }
+}
+
+// Function to remove an element from the decodeQueue
+char *dequeueFetch()
+{
+    if (isEmptyFetch())
+    {
+        printf("Queue is empty!\n");
+    }
+    else
+    {
+        strcpy(fetchQueueOutput, fetchQueue[frontFetch].instruction);
+        frontFetch++;
+        if (frontFetch > rearFetch)
+        {
+            frontFetch = rearFetch = -1;
+        }
+    }
+}
+
+int clock = 0;
+char currentInstr[17];
+
 struct instr IM[1024];
 int DM[2048];
 int8_t REG[64];
 int opcodeVal;
+int number_of_instr = 0;
 
 int firstOP;
 int secondOP;
 
 int8_t SREG;
 unsigned short PC;
-
-void sub()
-{
-    REG[firstOP - 1] -= REG[secondOP - 1];
-}
-
-void mul()
-{
-    REG[firstOP - 1] *= REG[secondOP - 1];
-}
 
 void updateOverflow(uint8_t op1, uint8_t op2, uint8_t val)
 {
@@ -104,8 +212,6 @@ void updateNegativeFlag(int val)
 
     // update needed bit (2nd bit)
     SREG = SREG | newVal;
-
-    printf("SREG after neg:%d\n", SREG);
 }
 
 void updateCarryflag(int val)
@@ -124,8 +230,6 @@ void updateCarryflag(int val)
 
     // update needed bit (4th bit)
     SREG = SREG | newVal;
-
-    printf("SREG after carry:%d\n", SREG);
 }
 
 void getBinary(int value, int i)
@@ -354,15 +458,15 @@ void parseInstruction(char *instr, int i)
         }
         getBinary(atoi(regValue), i);
     }
-    printf("%s\n", IM[i].instruction);
 }
 
 void instructionFetch()
 {
     strncpy(currentInstr, IM[PC].instruction, 16);
-    PC++;
+    printf("Instruction being Fetched: %s\n", IM[PC].instruction);
 
-    // copy opcode from instruction
+    enqueueFetch(IM[PC].instruction);
+    PC++;
 }
 
 void instructionDecode()
@@ -371,10 +475,13 @@ void instructionDecode()
     char firstOperand[7];
     char secondOperand[7];
     char temp[32];
+    struct queueElement elementToInsert;
 
-    strncpy(opcode, currentInstr, 4);
-    strncpy(firstOperand, &currentInstr[4], 6);
-    strncpy(secondOperand, &currentInstr[10], 6);
+    printf("Instruction being Decoded: %s\n", fetchQueueOutput);
+
+    strncpy(opcode, fetchQueueOutput, 4);
+    strncpy(firstOperand, &fetchQueueOutput[4], 6);
+    strncpy(secondOperand, &fetchQueueOutput[10], 6);
 
     opcode[4] = '\0';
     firstOperand[6] = '\0';
@@ -407,37 +514,54 @@ void instructionDecode()
         secondOP = (int)strtol(temp, NULL, 2);
     }
     opcodeVal = (int)strtol(opcode, NULL, 2);
+
+    elementToInsert.firstOp = firstOP;
+    elementToInsert.secondOp = secondOP;
+    elementToInsert.opcode = opcodeVal;
+    enqueueDecode(elementToInsert);
+    if (opcodeVal == 4)
+    {
+        dequeueFetch();
+    }
 }
 
 void instructionExecute()
 {
+    printf("Instruction Being Executed %s\n", IM[PC - 3].instruction);
+    int tempVal = 0;
     switch (opcodeVal)
     {
     // ADD
     case 0:
-        int tempVal = REG[firstOP - 1] + REG[secondOP - 1];
+        tempVal = REG[firstOP - 1] + REG[secondOP - 1];
+
         updateCarryflag(tempVal);
         updateNegativeFlag(tempVal);
-        // Updating zero flag
+        updateOverflow(REG[firstOP - 1], REG[secondOP - 1], tempVal);
         updateZeroFlag(tempVal);
+        updateSignFlag(tempVal);
+        REG[firstOP - 1] = REG[firstOP - 1] + REG[secondOP - 1];
         break;
 
     // SUB
     case 1:
-        sub();
+        tempVal = REG[firstOP - 1] - REG[secondOP - 1];
+        updateOverflow(REG[firstOP - 1], REG[secondOP - 1], tempVal);
+        updateNegativeFlag(tempVal);
+        updateZeroFlag(tempVal);
+        updateSignFlag(tempVal);
 
-        // Updating zero flag
+        REG[firstOP - 1] = REG[firstOP - 1] - REG[secondOP - 1];
 
-        // Updating negative flag
         break;
 
     // MUL
     case 2:
-        mul();
+        tempVal = REG[firstOP - 1] * REG[secondOP - 1];
 
-        // Updating zero flag
+        updateNegativeFlag(tempVal);
+        updateZeroFlag(tempVal);
 
-        // Updating negative flag
         break;
 
     // LDI
@@ -445,31 +569,48 @@ void instructionExecute()
         REG[firstOP - 1] = secondOP;
         break;
 
-        // BEQZ
+    // BEQZ
     case 4:
         if (REG[firstOP - 1] == 0)
         {
             PC += secondOP;
         }
 
+        // flush any instruction in decode and fetch pipeline(queue)
+        while (!isEmptyDecode())
+        {
+            dequeueDecode();
+        }
+
+        while (!isEmptyFetch())
+        {
+            dequeueFetch();
+        }
+        cyclesNeeded = (number_of_instr - secondOP - 1) + 3;
         break;
 
     // AND
     case 5:
+        tempVal = REG[firstOP - 1] & REG[secondOP - 1];
         REG[firstOP - 1] = REG[firstOP - 1] & REG[secondOP - 1];
 
         // Updating zero flag
+        updateZeroFlag(tempVal);
 
         // Updating negative flag
+        updateNegativeFlag(tempVal);
 
         break;
     // OR
     case 6:
         REG[firstOP - 1] = REG[firstOP - 1] | REG[secondOP - 1];
 
+        tempVal = REG[firstOP - 1] | REG[secondOP - 1];
         // Updating zero flag
+        updateZeroFlag(tempVal);
 
         // Updating negative flag
+        updateNegativeFlag(tempVal);
 
         break;
 
@@ -500,11 +641,14 @@ void instructionExecute()
         int shift = secondOP % 8;
 
         // Perform the left circular shift
-        REG[firstOP] = (REG[firstOP] << shift) | (REG[firstOP] >> (8 - shift));
+        REG[firstOP - 1] = (REG[firstOP - 1] << shift) | (REG[firstOP - 1] >> (8 - shift));
 
+        tempVal = (REG[firstOP - 1] >> shift) | (REG[firstOP - 1] << (8 - shift));
         // Updating zero flag
+        updateZeroFlag(tempVal);
 
         // Updating negative flag
+        updateNegativeFlag(tempVal);
 
         break;
     // SRC
@@ -513,27 +657,40 @@ void instructionExecute()
         shift = secondOP % 8;
 
         // Perform the right circular shift
-        REG[firstOP] = (REG[firstOP] >> shift) | (REG[firstOP] << (8 - shift));
+        REG[firstOP - 1] = (REG[firstOP - 1] >> shift) | (REG[firstOP - 1] << (8 - shift));
 
+        tempVal = (REG[firstOP - 1] >> shift) | (REG[firstOP - 1] << (8 - shift));
         // Updating zero flag
+        updateZeroFlag(tempVal);
 
         // Updating negative flag
+        updateNegativeFlag(tempVal);
+
         break;
     // LB
     case 10:
-        REG[firstOP] = DM[secondOP];
-        printf("%d \n", REG[firstOP]);
+        REG[firstOP - 1] = DM[secondOP - 1];
         break;
     // SB
     case 11:
-        DM[secondOP] = REG[firstOP];
-        printf("%d \n", DM[secondOP]);
-        // Code for opcode 11
+        DM[secondOP - 1] = REG[firstOP - 1];
         break;
 
     default:
         break;
     }
+    printf("___________________________________________\n");
+    printf("Registers Values:\n");
+    printf("_________________\n");
+    printf("PC: %d\n", PC);
+    printf("General Purpose Registers:\n");
+    printf("    R%d:%d\n", firstOP, REG[firstOP - 1]);
+    printf("SREG:\n");
+    printf("    -Zero Flag:%d\n",(SREG&0b0000000));
+    printf("    -Sign Flag:%d\n",(SREG&0b0000010)>>1);
+    printf("    -Negative Flag:%d\n",(SREG&0b0000100)>>2);
+    printf("    -Twos Comp Flag:%d\n",(SREG&0b0001000)>>3);
+    printf("    -Carry Flag:%d\n",(SREG&0b00010000)>>4);
 }
 
 int main(int argc, char const *argv[])
@@ -551,22 +708,34 @@ int main(int argc, char const *argv[])
         {
             parseInstruction(instruction, i);
             i++;
+            number_of_instr++;
         }
-
-        REG[0] = -3;
-        REG[1] = 3;
-        printf("____________________________________________\n");
-        instructionFetch();
-        instructionDecode();
-        instructionExecute();
-
-        // ay 7aga
-        // printf("Result: %d\n", REG[firstOP - 1]);
-        // printf("Zero flag: %d\n", SREG[0] & zeroMask);
-        printf("Negative flag: %d\n", SREG);
-
-        // printf("%d\n", PC);
         fclose(fptr);
+
+        // calculate cycles needed
+        cyclesNeeded = 3 + (number_of_instr - 1);
+        while (clock != cyclesNeeded)
+        {
+            printf("Cycle %d:\n", clock + 1);
+            printf("Pipeline Stages:\n");
+            printf("_________________\n");
+            instructionFetch();
+            if (!isEmptyFetch() && clock != 0)
+            {
+                dequeueFetch();
+                instructionDecode();
+            }
+            if (!isEmptyDecode() && clock != 1)
+            {
+                dequeueDecode();
+                firstOP = decodeQueueOutput.firstOp;
+                secondOP = decodeQueueOutput.secondOp;
+                opcodeVal = decodeQueueOutput.opcode;
+                instructionExecute();
+            }
+            clock++;
+            printf("________________________________\n");
+        }
     }
 
     return 0;
