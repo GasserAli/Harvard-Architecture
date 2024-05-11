@@ -4,7 +4,7 @@
 #include <stdint.h>
 #define SIZE 10
 
-int skip = 0;
+int stopProgram = 0;
 int cyclesNeeded = 0;
 struct queueElement
 {
@@ -141,6 +141,40 @@ int secondOP;
 
 int8_t SREG;
 unsigned short PC;
+
+void printRegisters()
+{
+    for (int i = 0; i < 64; i++)
+    {
+        if (i % 8 == 0)
+        {
+            printf("\n");
+            printf("        -R[%d]:%d", (i + 1), REG[i]);
+        }
+        else
+        {
+            printf(" -R[%d]:%d", (i + 1), REG[i]);
+        }
+    }
+    printf("\n");
+}
+
+void printMemory()
+{
+    for (int i = 0; i < 2048; i++)
+    {
+        if (i % 11 == 0)
+        {
+            printf("\n");
+            printf("        -M[%d]:%d", (i + 1), DM[i]);
+        }
+        else
+        {
+            printf(" -M[%d]:%d", (i + 1), DM[i]);
+        }
+    }
+    printf("\n");
+}
 
 void updateOverflow(uint8_t op1, uint8_t op2, uint8_t val)
 {
@@ -466,6 +500,10 @@ void instructionFetch()
     printf("Instruction being Fetched: %s\n", IM[PC].instruction);
 
     enqueueFetch(IM[PC].instruction);
+    if (strlen(IM[PC].instruction) == 0)
+    {
+        stopProgram = 1;
+    }
     PC++;
 }
 
@@ -519,10 +557,6 @@ void instructionDecode()
     elementToInsert.secondOp = secondOP;
     elementToInsert.opcode = opcodeVal;
     enqueueDecode(elementToInsert);
-    if (opcodeVal == 4)
-    {
-        dequeueFetch();
-    }
 }
 
 void instructionExecute()
@@ -681,16 +715,18 @@ void instructionExecute()
     }
     printf("___________________________________________\n");
     printf("Registers Values:\n");
-    printf("_________________\n");
-    printf("PC: %d\n", PC);
-    printf("General Purpose Registers:\n");
-    printf("    R%d:%d\n", firstOP, REG[firstOP - 1]);
-    printf("SREG:\n");
-    printf("    -Zero Flag:%d\n",(SREG&0b0000000));
-    printf("    -Sign Flag:%d\n",(SREG&0b0000010)>>1);
-    printf("    -Negative Flag:%d\n",(SREG&0b0000100)>>2);
-    printf("    -Twos Comp Flag:%d\n",(SREG&0b0001000)>>3);
-    printf("    -Carry Flag:%d\n",(SREG&0b00010000)>>4);
+    printf("    -PC: %d\n", PC);
+    printf("    -SREG:\n");
+    printf("        -Zero Flag:%d\n", (SREG & 0b0000000));
+    printf("        -Sign Flag:%d\n", (SREG & 0b0000010) >> 1);
+    printf("        -Negative Flag:%d\n", (SREG & 0b0000100) >> 2);
+    printf("        -Twos Comp Flag:%d\n", (SREG & 0b0001000) >> 3);
+    printf("        -Carry Flag:%d\n", (SREG & 0b00010000) >> 4);
+    printf("    -General Purpose Registers:");
+    printRegisters();
+    printf("    -Data Memory");
+    printMemory();
+
 }
 
 int main(int argc, char const *argv[])
@@ -714,11 +750,10 @@ int main(int argc, char const *argv[])
 
         // calculate cycles needed
         cyclesNeeded = 3 + (number_of_instr - 1);
-        while (clock != cyclesNeeded)
+        while (!stopProgram)
         {
             printf("Cycle %d:\n", clock + 1);
             printf("Pipeline Stages:\n");
-            printf("_________________\n");
             instructionFetch();
             if (!isEmptyFetch() && clock != 0)
             {
@@ -734,7 +769,7 @@ int main(int argc, char const *argv[])
                 instructionExecute();
             }
             clock++;
-            printf("________________________________\n");
+            printf("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n");
         }
     }
 
