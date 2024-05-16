@@ -2,21 +2,33 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdint.h>
+#define SIZE 10
+
+int stopProgram = 0;
+int cyclesNeeded = 0;
 
 int clock = 0;
 char currentInstr[17];
+
+char instrExecuted[17];
 
 struct instr
 {
     char instruction[17];
 };
 
-// TODO:hayb2o of type ehh
-// TODO: el REG hatb2a int wala a3ml type yeb2a 1 byte
+struct queueElement
+{
+    int firstOp;
+    int secondOp;
+    int opcode;
+};
+
 struct instr IM[1024];
 int DM[2048];
 int8_t REG[64];
 int opcodeVal;
+int number_of_instr = 0;
 
 int firstOP;
 int secondOP;
@@ -24,16 +36,62 @@ int secondOP;
 int8_t SREG;
 unsigned short PC;
 
-void sub()
+char fetchQueueOutput[17];
+struct queueElement decodeQueueOutput;
+
+struct queueElement decodeQueue[SIZE];
+int frontDecode = -1;
+int rearDecode = -1;
+
+//prints register content
+void printRegisters()
 {
-    REG[firstOP - 1] -= REG[secondOP - 1];
+    for (int i = 0; i < 64; i++)
+    {
+        if (i % 8 == 0)
+        {
+            printf("\n");
+            printf("        -R[%d]:%d", (i + 1), REG[i]);
+        }
+        else
+        {
+            printf(" -R[%d]:%d", (i + 1), REG[i]);
+        }
+    }
+    printf("\n");
 }
 
-void mul()
+//prints memory content
+void printMemory()
 {
-    REG[firstOP - 1] *= REG[secondOP - 1];
+    for (int i = 0; i < 2048; i++)
+    {
+        if (i % 11 == 0)
+        {
+            printf("\n");
+            printf("        -M[%d]:%d", (i + 1), DM[i]);
+        }
+        else
+        {
+            printf(" -M[%d]:%d", (i + 1), DM[i]);
+        }
+    }
+    printf("\n");
 }
 
+void printMemoryAlt()
+{
+    for (int i = 0; i < 2048; i++)
+    {
+
+        printf("%d", DM[i]);
+    }
+
+    printf("\n");
+}
+
+// ----------------Flags Updates----------------
+//update overflow flag
 void updateOverflow(uint8_t op1, uint8_t op2, uint8_t val)
 {
     uint8_t firstMSB = (op1 & 0b10000000) >> 7;
@@ -55,6 +113,7 @@ void updateOverflow(uint8_t op1, uint8_t op2, uint8_t val)
     SREG = SREG & 0b11110111;
 }
 
+//update sign flag
 void updateSignFlag()
 {
     uint8_t nBit = (SREG & 0b00000100) >> 2;
@@ -75,6 +134,7 @@ void updateSignFlag()
     }
 }
 
+//update zero flag
 void updateZeroFlag(int val)
 {
     // check if operation value=0
@@ -94,6 +154,7 @@ void updateZeroFlag(int val)
     }
 }
 
+//update negative flag
 void updateNegativeFlag(int val)
 {
     int comp = val & 0b0000000000000000000000010000000;
@@ -104,10 +165,9 @@ void updateNegativeFlag(int val)
 
     // update needed bit (2nd bit)
     SREG = SREG | newVal;
-
-    printf("SREG after neg:%d\n", SREG);
 }
 
+//update carry flag
 void updateCarryflag(int val)
 {
     // gets unsigned value
@@ -124,10 +184,9 @@ void updateCarryflag(int val)
 
     // update needed bit (4th bit)
     SREG = SREG | newVal;
-
-    printf("SREG after carry:%d\n", SREG);
 }
 
+//get binary value in form of string
 void getBinary(int value, int i)
 {
     char binary[6];
@@ -190,6 +249,7 @@ void getBinary(int value, int i)
     strcat(IM[i].instruction, binary);
 }
 
+//get binary value in form of string with 7 characters (including /0)
 void getBinaryMod(int value, char binary[7])
 {
     int index = 5;
@@ -248,6 +308,7 @@ void getBinaryMod(int value, char binary[7])
     }
 }
 
+//loads instructions from text file to instruction memory
 void parseInstruction(char *instr, int i)
 {
     char opcode[5];
@@ -354,15 +415,14 @@ void parseInstruction(char *instr, int i)
         }
         getBinary(atoi(regValue), i);
     }
-    printf("%s\n", IM[i].instruction);
 }
 
 void instructionFetch()
 {
     strncpy(currentInstr, IM[PC].instruction, 16);
+    printf("Instruction being Fetched: %s\n", IM[PC].instruction);
+    strncpy(fetchQueueOutput, IM[PC].instruction, 16);
     PC++;
-
-    // copy opcode from instruction
 }
 
 void instructionDecode()
@@ -371,169 +431,228 @@ void instructionDecode()
     char firstOperand[7];
     char secondOperand[7];
     char temp[32];
+    struct queueElement elementToInsert;
+    printf("Instruction being Decoded: %s\n", fetchQueueOutput);
 
-    strncpy(opcode, currentInstr, 4);
-    strncpy(firstOperand, &currentInstr[4], 6);
-    strncpy(secondOperand, &currentInstr[10], 6);
+    if (strlen(fetchQueueOutput) != 0)
+    {
+        strncpy(opcode, fetchQueueOutput, 4);
+        strncpy(firstOperand, &fetchQueueOutput[4], 6);
+        strncpy(secondOperand, &fetchQueueOutput[10], 6);
+        strcpy(instrExecuted, fetchQueueOutput);
 
-    opcode[4] = '\0';
-    firstOperand[6] = '\0';
-    secondOperand[6] = '\0';
-    temp[31] = '\0';
+        opcode[4] = '\0';
+        firstOperand[6] = '\0';
+        secondOperand[6] = '\0';
+        temp[31] = '\0';
 
-    if (firstOperand[0] == '1')
-    {
-        strcpy(temp, "11111111111111111111111111");
-        strncat(temp, firstOperand, 6);
-        firstOP = (int)strtol(temp, NULL, 2);
-    }
-    else
-    {
-        strcpy(temp, "00000000000000000000000000");
-        strncat(temp, firstOperand, 6);
-        firstOP = (int)strtol(temp, NULL, 2);
-    }
+        if (firstOperand[0] == '1')
+        {
+            strcpy(temp, "11111111111111111111111111");
+            strncat(temp, firstOperand, 6);
+            firstOP = (int)strtol(temp, NULL, 2);
+        }
+        else
+        {
+            strcpy(temp, "00000000000000000000000000");
+            strncat(temp, firstOperand, 6);
+            firstOP = (int)strtol(temp, NULL, 2);
+        }
 
-    if (secondOperand[0] == '1')
-    {
-        strcpy(temp, "11111111111111111111111111");
-        strcat(temp, secondOperand);
-        secondOP = (int)strtol(temp, NULL, 2);
+        if (secondOperand[0] == '1')
+        {
+            strcpy(temp, "11111111111111111111111111");
+            strcat(temp, secondOperand);
+            secondOP = (int)strtol(temp, NULL, 2);
+        }
+        else
+        {
+            strcpy(temp, "00000000000000000000000000");
+            strcat(temp, secondOperand);
+            secondOP = (int)strtol(temp, NULL, 2);
+        }
+        opcodeVal = (int)strtol(opcode, NULL, 2);
+        decodeQueueOutput.firstOp = firstOP;
+        decodeQueueOutput.secondOp = secondOP;
+        decodeQueueOutput.opcode = opcodeVal;
     }
-    else
-    {
-        strcpy(temp, "00000000000000000000000000");
-        strcat(temp, secondOperand);
-        secondOP = (int)strtol(temp, NULL, 2);
-    }
-    opcodeVal = (int)strtol(opcode, NULL, 2);
 }
 
 void instructionExecute()
 {
-    switch (opcodeVal)
+    printf("Instruction Being Executed %s\n", instrExecuted);
+    int tempVal = 0;
+    if ((decodeQueueOutput.firstOp == 0 && decodeQueueOutput.secondOp == 0 && decodeQueueOutput.opcode == 0))
     {
-    // ADD
-    case 0:
-        int tempVal = REG[firstOP - 1] + REG[secondOP - 1];
-        updateCarryflag(tempVal);
-        updateNegativeFlag(tempVal);
-        // Updating zero flag
-        updateZeroFlag(tempVal);
-        break;
+    }
+    else
+    {
+        switch (opcodeVal)
+        {
+        // ADD
+        case 0:
+            tempVal = REG[firstOP - 1] + REG[secondOP - 1];
 
-    // SUB
-    case 1:
-        sub();
+            updateCarryflag(tempVal);
+            updateNegativeFlag(tempVal);
+            updateOverflow(REG[firstOP - 1], REG[secondOP - 1], tempVal);
+            updateZeroFlag(tempVal);
+            updateSignFlag(tempVal);
+            REG[firstOP - 1] = REG[firstOP - 1] + REG[secondOP - 1];
+            break;
 
-        // Updating zero flag
+        // SUB
+        case 1:
+            tempVal = REG[firstOP - 1] - REG[secondOP - 1];
+            updateOverflow(REG[firstOP - 1], REG[secondOP - 1], tempVal);
+            updateNegativeFlag(tempVal);
+            updateZeroFlag(tempVal);
+            updateSignFlag(tempVal);
 
-        // Updating negative flag
-        break;
+            REG[firstOP - 1] = REG[firstOP - 1] - REG[secondOP - 1];
 
-    // MUL
-    case 2:
-        mul();
+            break;
 
-        // Updating zero flag
+        // MUL
+        case 2:
+            tempVal = REG[firstOP - 1] * REG[secondOP - 1];
 
-        // Updating negative flag
-        break;
+            updateNegativeFlag(tempVal);
+            updateZeroFlag(tempVal);
 
-    // LDI
-    case 3:
-        REG[firstOP - 1] = secondOP;
-        break;
+            break;
+
+        // LDI
+        case 3:
+            REG[firstOP - 1] = secondOP;
+            break;
 
         // BEQZ
-    case 4:
-        if (REG[firstOP - 1] == 0)
-        {
-            PC += secondOP;
+        case 4:
+            if (REG[firstOP - 1] == 0)
+            {
+                PC += secondOP;
+            }
+            printf("    -PC BEQZ: %d\n", PC);
+
+            cyclesNeeded = (number_of_instr - secondOP - 1) + 3;
+            strcpy(fetchQueueOutput, "");
+            decodeQueueOutput.firstOp = 0;
+            decodeQueueOutput.secondOp = 0;
+            decodeQueueOutput.opcode = 0;
+            break;
+
+        // AND
+        case 5:
+            tempVal = REG[firstOP - 1] & REG[secondOP - 1];
+            REG[firstOP - 1] = REG[firstOP - 1] & REG[secondOP - 1];
+
+            // Updating zero flag
+            updateZeroFlag(tempVal);
+
+            // Updating negative flag
+            updateNegativeFlag(tempVal);
+
+            break;
+        // OR
+        case 6:
+            REG[firstOP - 1] = REG[firstOP - 1] | REG[secondOP - 1];
+
+            tempVal = REG[firstOP - 1] | REG[secondOP - 1];
+            // Updating zero flag
+            updateZeroFlag(tempVal);
+
+            // Updating negative flag
+            updateNegativeFlag(tempVal);
+
+            break;
+
+        // JR
+        case 7:
+            char temp[27];
+
+            char tempBin[7];
+            getBinaryMod(REG[firstOP - 1], tempBin);
+            strcpy(temp, tempBin);
+            getBinaryMod(REG[secondOP - 1], tempBin);
+            strcat(temp, tempBin);
+            if (REG[firstOP - 1] >= 0)
+            {
+                PC = (int)strtol(temp, NULL, 2);
+            }
+            else
+            {
+                strcat(temp, "11111111111111111111");
+                PC = (int)strtol(temp, NULL, 2);
+            }
+
+            break;
+
+        // SLC
+        case 8:
+            // Get the modulo 8 of the immediate value to determine shift amount
+            int shift = secondOP % 8;
+
+            // Perform the left circular shift
+            REG[firstOP - 1] = (REG[firstOP - 1] << shift) | (REG[firstOP - 1] >> (8 - shift));
+
+            tempVal = (REG[firstOP - 1] >> shift) | (REG[firstOP - 1] << (8 - shift));
+            // Updating zero flag
+            updateZeroFlag(tempVal);
+
+            // Updating negative flag
+            updateNegativeFlag(tempVal);
+
+            break;
+        // SRC
+        case 9:
+            // Get the modulo 8 of the immediate value to determine shift amount
+            shift = secondOP % 8;
+
+            // Perform the right circular shift
+            REG[firstOP - 1] = (REG[firstOP - 1] >> shift) | (REG[firstOP - 1] << (8 - shift));
+
+            tempVal = (REG[firstOP - 1] >> shift) | (REG[firstOP - 1] << (8 - shift));
+            // Updating zero flag
+            updateZeroFlag(tempVal);
+
+            // Updating negative flag
+            updateNegativeFlag(tempVal);
+
+            break;
+        // LB
+        case 10:
+            REG[firstOP - 1] = DM[secondOP - 1];
+            printf("Data Memory:\n");
+            printf("    -D[%d]:%d", secondOP, DM[secondOP - 1]);
+
+            break;
+        // SB
+        case 11:
+            DM[secondOP - 1] = REG[firstOP - 1];
+            printf("Data Memory:\n");
+            printf("    -D[%d]:%d", secondOP, DM[secondOP - 1]);
+            break;
+
+        default:
+            break;
         }
-
-        break;
-
-    // AND
-    case 5:
-        REG[firstOP - 1] = REG[firstOP - 1] & REG[secondOP - 1];
-
-        // Updating zero flag
-
-        // Updating negative flag
-
-        break;
-    // OR
-    case 6:
-        REG[firstOP - 1] = REG[firstOP - 1] | REG[secondOP - 1];
-
-        // Updating zero flag
-
-        // Updating negative flag
-
-        break;
-
-    // JR
-    case 7:
-        char temp[27];
-
-        char tempBin[7];
-        getBinaryMod(REG[firstOP - 1], tempBin);
-        strcpy(temp, tempBin);
-        getBinaryMod(REG[secondOP - 1], tempBin);
-        strcat(temp, tempBin);
-        if (REG[firstOP - 1] >= 0)
-        {
-            PC = (int)strtol(temp, NULL, 2);
-        }
-        else
-        {
-            strcat(temp, "11111111111111111111");
-            PC = (int)strtol(temp, NULL, 2);
-        }
-
-        break;
-
-    // SLC
-    case 8:
-        // Get the modulo 8 of the immediate value to determine shift amount
-        int shift = secondOP % 8;
-
-        // Perform the left circular shift
-        REG[firstOP] = (REG[firstOP] << shift) | (REG[firstOP] >> (8 - shift));
-
-        // Updating zero flag
-
-        // Updating negative flag
-
-        break;
-    // SRC
-    case 9:
-        // Get the modulo 8 of the immediate value to determine shift amount
-        shift = secondOP % 8;
-
-        // Perform the right circular shift
-        REG[firstOP] = (REG[firstOP] >> shift) | (REG[firstOP] << (8 - shift));
-
-        // Updating zero flag
-
-        // Updating negative flag
-        break;
-    // LB
-    case 10:
-        REG[firstOP] = DM[secondOP];
-        printf("%d \n", REG[firstOP]);
-        break;
-    // SB
-    case 11:
-        DM[secondOP] = REG[firstOP];
-        printf("%d \n", DM[secondOP]);
-        // Code for opcode 11
-        break;
-
-    default:
-        break;
     }
+
+    printf("___________________________________________\n");
+    printf("Registers Values:\n");
+    printf("    -PC: %d\n", PC);
+    printf("    -SREG:\n");
+    printf("        -Zero Flag:%d\n", (SREG & 0b0000001));
+    printf("        -Sign Flag:%d\n", (SREG & 0b0000010) >> 1);
+    printf("        -Negative Flag:%d\n", (SREG & 0b0000100) >> 2);
+    printf("        -Twos Comp Flag:%d\n", (SREG & 0b0001000) >> 3);
+    printf("        -Carry Flag:%d\n", (SREG & 0b00010000) >> 4);
+    printf("    -General Purpose Registers:");
+    printRegisters();
+    printf("    -Data Memory\n");
+    // printMemoryAlt();
+    // printMemory();
 }
 
 int main(int argc, char const *argv[])
@@ -551,22 +670,39 @@ int main(int argc, char const *argv[])
         {
             parseInstruction(instruction, i);
             i++;
+            number_of_instr++;
         }
-
-        REG[0] = -3;
-        REG[1] = 3;
-        printf("____________________________________________\n");
-        instructionFetch();
-        instructionDecode();
-        instructionExecute();
-
-        // ay 7aga
-        // printf("Result: %d\n", REG[firstOP - 1]);
-        // printf("Zero flag: %d\n", SREG[0] & zeroMask);
-        printf("Negative flag: %d\n", SREG);
-
-        // printf("%d\n", PC);
         fclose(fptr);
+
+        // calculate cycles needed
+        cyclesNeeded = 3 + (number_of_instr - 1);
+        while (clock != cyclesNeeded)
+        {
+            // printf("Cycle %d:\n", clock + 1);
+            // printf("Pipeline Stages:\n");
+            // instructionFetch();
+            // if (!isEmptyFetch() && clock != 0)
+            // {
+            //     dequeueFetch();
+            //     instructionDecode();
+            // }
+            // if (!isEmptyDecode() && clock != 1)
+            // {
+            //     dequeueDecode();
+            //     firstOP = decodeQueueOutput.firstOp;
+            //     secondOP = decodeQueueOutput.secondOp;
+            //     opcodeVal = decodeQueueOutput.opcode;
+            //     instructionExecute();
+            // }
+            printf("Cycle %d:\n", clock + 1);
+            printf("Pipeline Stages:\n");
+
+            instructionExecute();
+            instructionDecode();
+            instructionFetch();
+            clock++;
+            printf("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n");
+        }
     }
 
     return 0;
