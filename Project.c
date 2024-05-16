@@ -2,13 +2,12 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdint.h>
-#define SIZE 10
 
-int stopProgram = 0;
+int executeFlag = 1;
 int cyclesNeeded = 0;
+int decodeFlag = 1;
 
 int clock = 0;
-char currentInstr[17];
 
 char instrExecuted[17];
 
@@ -27,6 +26,7 @@ struct queueElement
 struct instr IM[1024];
 int DM[2048];
 int8_t REG[64];
+
 int opcodeVal;
 int number_of_instr = 0;
 
@@ -39,11 +39,7 @@ unsigned short PC;
 char fetchQueueOutput[17];
 struct queueElement decodeQueueOutput;
 
-struct queueElement decodeQueue[SIZE];
-int frontDecode = -1;
-int rearDecode = -1;
-
-//prints register content
+// prints register content
 void printRegisters()
 {
     for (int i = 0; i < 64; i++)
@@ -61,7 +57,7 @@ void printRegisters()
     printf("\n");
 }
 
-//prints memory content
+// prints memory content
 void printMemory()
 {
     for (int i = 0; i < 2048; i++)
@@ -91,7 +87,7 @@ void printMemoryAlt()
 }
 
 // ----------------Flags Updates----------------
-//update overflow flag
+// update overflow flag
 void updateOverflow(uint8_t op1, uint8_t op2, uint8_t val)
 {
     uint8_t firstMSB = (op1 & 0b10000000) >> 7;
@@ -113,7 +109,7 @@ void updateOverflow(uint8_t op1, uint8_t op2, uint8_t val)
     SREG = SREG & 0b11110111;
 }
 
-//update sign flag
+// update sign flag
 void updateSignFlag()
 {
     uint8_t nBit = (SREG & 0b00000100) >> 2;
@@ -134,13 +130,12 @@ void updateSignFlag()
     }
 }
 
-//update zero flag
+// update zero flag
 void updateZeroFlag(int val)
 {
     // check if operation value=0
     if (val == 0)
     {
-
         // mask other SREG bits
         SREG = SREG & 0b11111110;
 
@@ -154,7 +149,7 @@ void updateZeroFlag(int val)
     }
 }
 
-//update negative flag
+// update negative flag
 void updateNegativeFlag(int val)
 {
     int comp = val & 0b0000000000000000000000010000000;
@@ -167,7 +162,7 @@ void updateNegativeFlag(int val)
     SREG = SREG | newVal;
 }
 
-//update carry flag
+// update carry flag
 void updateCarryflag(int val)
 {
     // gets unsigned value
@@ -186,7 +181,7 @@ void updateCarryflag(int val)
     SREG = SREG | newVal;
 }
 
-//get binary value in form of string
+// get binary value in form of string
 void getBinary(int value, int i)
 {
     char binary[6];
@@ -249,7 +244,7 @@ void getBinary(int value, int i)
     strcat(IM[i].instruction, binary);
 }
 
-//get binary value in form of string with 7 characters (including /0)
+// get binary value in form of string with 7 characters (including /0)
 void getBinaryMod(int value, char binary[7])
 {
     int index = 5;
@@ -308,7 +303,7 @@ void getBinaryMod(int value, char binary[7])
     }
 }
 
-//loads instructions from text file to instruction memory
+// loads instructions from text file to instruction memory
 void parseInstruction(char *instr, int i)
 {
     char opcode[5];
@@ -322,6 +317,7 @@ void parseInstruction(char *instr, int i)
         opcodePtr++;
         opcodeLen++;
     }
+    // reset values of opcode & regValue
     memset(opcode, 0, 4);
     memset(regValue, 0, 2);
 
@@ -379,6 +375,7 @@ void parseInstruction(char *instr, int i)
         strcpy(IM[i].instruction, "1011");
     }
 
+    // increment ptr
     opcodePtr++;
     opcodePtr++;
 
@@ -390,6 +387,7 @@ void parseInstruction(char *instr, int i)
         regValue[1] = (*opcodePtr);
         opcodePtr++;
     }
+
     opcodePtr++;
     getBinary(atoi(regValue), i);
 
@@ -419,7 +417,6 @@ void parseInstruction(char *instr, int i)
 
 void instructionFetch()
 {
-    strncpy(currentInstr, IM[PC].instruction, 16);
     printf("Instruction being Fetched: %s\n", IM[PC].instruction);
     strncpy(fetchQueueOutput, IM[PC].instruction, 16);
     PC++;
@@ -446,19 +443,12 @@ void instructionDecode()
         secondOperand[6] = '\0';
         temp[31] = '\0';
 
-        if (firstOperand[0] == '1')
-        {
-            strcpy(temp, "11111111111111111111111111");
-            strncat(temp, firstOperand, 6);
-            firstOP = (int)strtol(temp, NULL, 2);
-        }
-        else
-        {
-            strcpy(temp, "00000000000000000000000000");
-            strncat(temp, firstOperand, 6);
-            firstOP = (int)strtol(temp, NULL, 2);
-        }
+        // sign extending first operand (always >0)
+        strcpy(temp, "00000000000000000000000000");
+        strncat(temp, firstOperand, 6);
+        firstOP = (int)strtol(temp, NULL, 2);
 
+        // sign extending second operand (can be >0 or <0 )
         if (secondOperand[0] == '1')
         {
             strcpy(temp, "11111111111111111111111111");
@@ -471,22 +461,31 @@ void instructionDecode()
             strcat(temp, secondOperand);
             secondOP = (int)strtol(temp, NULL, 2);
         }
+
         opcodeVal = (int)strtol(opcode, NULL, 2);
+
         decodeQueueOutput.firstOp = firstOP;
         decodeQueueOutput.secondOp = secondOP;
         decodeQueueOutput.opcode = opcodeVal;
+    }
+
+    if (strlen(IM[PC].instruction) == 0)
+    {
+        decodeFlag = 0;
     }
 }
 
 void instructionExecute()
 {
-    printf("Instruction Being Executed %s\n", instrExecuted);
     int tempVal = 0;
     if ((decodeQueueOutput.firstOp == 0 && decodeQueueOutput.secondOp == 0 && decodeQueueOutput.opcode == 0))
     {
+        executeFlag = 0;
     }
     else
     {
+        printf("Instruction Being Executed %s\n", instrExecuted);
+
         switch (opcodeVal)
         {
         // ADD
@@ -531,11 +530,12 @@ void instructionExecute()
         case 4:
             if (REG[firstOP - 1] == 0)
             {
-                PC += secondOP;
+                PC += secondOP - 1; // decrement by 1 to undo the fetched instruction
             }
-            printf("    -PC BEQZ: %d\n", PC);
 
-            cyclesNeeded = (number_of_instr - secondOP - 1) + 3;
+            cyclesNeeded = (number_of_instr - secondOP - 1) + 3; //(used for debugging only)
+
+            // flush pipeline variables
             strcpy(fetchQueueOutput, "");
             decodeQueueOutput.firstOp = 0;
             decodeQueueOutput.secondOp = 0;
@@ -639,18 +639,6 @@ void instructionExecute()
         }
     }
 
-    printf("___________________________________________\n");
-    printf("Registers Values:\n");
-    printf("    -PC: %d\n", PC);
-    printf("    -SREG:\n");
-    printf("        -Zero Flag:%d\n", (SREG & 0b0000001));
-    printf("        -Sign Flag:%d\n", (SREG & 0b0000010) >> 1);
-    printf("        -Negative Flag:%d\n", (SREG & 0b0000100) >> 2);
-    printf("        -Twos Comp Flag:%d\n", (SREG & 0b0001000) >> 3);
-    printf("        -Carry Flag:%d\n", (SREG & 0b00010000) >> 4);
-    printf("    -General Purpose Registers:");
-    printRegisters();
-    printf("    -Data Memory\n");
     // printMemoryAlt();
     // printMemory();
 }
@@ -676,30 +664,34 @@ int main(int argc, char const *argv[])
 
         // calculate cycles needed
         cyclesNeeded = 3 + (number_of_instr - 1);
-        while (clock != cyclesNeeded)
+        while (1)
         {
-            // printf("Cycle %d:\n", clock + 1);
-            // printf("Pipeline Stages:\n");
-            // instructionFetch();
-            // if (!isEmptyFetch() && clock != 0)
-            // {
-            //     dequeueFetch();
-            //     instructionDecode();
-            // }
-            // if (!isEmptyDecode() && clock != 1)
-            // {
-            //     dequeueDecode();
-            //     firstOP = decodeQueueOutput.firstOp;
-            //     secondOP = decodeQueueOutput.secondOp;
-            //     opcodeVal = decodeQueueOutput.opcode;
-            //     instructionExecute();
-            // }
+
             printf("Cycle %d:\n", clock + 1);
             printf("Pipeline Stages:\n");
 
             instructionExecute();
+
+            printf("___________________________________________\n");
+            printf("Registers Values:\n");
+            printf("    -PC: %d\n", (PC + 1));
+            printf("    -SREG:\n");
+            printf("        -Zero Flag:%d\n", (SREG & 0b0000001));
+            printf("        -Sign Flag:%d\n", (SREG & 0b0000010) >> 1);
+            printf("        -Negative Flag:%d\n", (SREG & 0b0000100) >> 2);
+            printf("        -Twos Comp Flag:%d\n", (SREG & 0b0001000) >> 3);
+            printf("        -Carry Flag:%d\n", (SREG & 0b00010000) >> 4);
+            printf("    -General Purpose Registers:");
+            printRegisters();
+            printf("    -Data Memory\n");
+
+            if (decodeFlag != 1)
+            {
+                break;
+            }
             instructionDecode();
             instructionFetch();
+
             clock++;
             printf("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n");
         }
